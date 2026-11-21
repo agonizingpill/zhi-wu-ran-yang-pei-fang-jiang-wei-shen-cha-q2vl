@@ -3,3 +3,19 @@
 .value{display:block;font-size:22px;margin:9px 0}.batch .metricline strong{font-size:21px}.revision .grid3{margin:20px 0}nav{padding-top:18px}nav a{padding-top:13px;padding-bottom:13px}
 
 .subhead{margin-top:30px!important}.stock-table{overflow:auto}.issue .value{font-size:25px}.dispatch .rule,.complaint .rule{font-size:13px;line-height:1.8}.complaint .actions{display:flex;gap:10px;margin-top:18px}nav a{padding-top:10px;padding-bottom:10px}nav .hint{font-size:11px}.complaint,.dispatch{overflow-wrap:anywhere}@media(max-width:767px){.stock-table table{min-width:470px}.issue .grid3{grid-template-columns:1fr 1fr 1fr}.issue .value{font-size:21px}}
+.retire-items{display:grid;gap:12px;margin:14px 0}
+.retire-item{border:1px solid var(--line);padding:14px 16px;background:oklch(98% .012 85)}
+.retire-item h4{margin:0 0 5px;font-size:15px}
+.retire-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;margin:8px 0}
+.retire-pair .arrow{color:var(--rust);font-size:20px}
+.retire-details{margin:12px 0}
+.retire-details summary{cursor:pointer;font-size:13px;color:var(--muted);padding:6px 0}
+.retire-details table{margin-top:8px}
+.reject-form{margin-top:12px}
+.retire-batch .status.proposed{border-color:var(--rust);color:var(--rust)}
+tr.retired-row{opacity:.72;text-decoration:line-through}
+tr.retired-row .status{text-decoration:none}
+.retire-inline{margin-top:40px}
+.retire-inline .split{grid-template-columns:1fr}
+.cabinet-panel{max-width:1100px}
+.retire-batches{display:grid;gap:22px}

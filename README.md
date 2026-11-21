@@ -19,7 +19,7 @@ docker compose exec -T backend python -m scripts.seed_demo
 |---|---|---|
 |admin@qise.test|admin 主管|全部录入、计算、确认、最终签批|
 |colorist@qise.test|colorist 调色师|配方/染样录入、PCA、试验与色差确认，不能最终批准|
-|viewer@qise.test|viewer 观察员|九页与审计记录只读|
+|viewer@qise.test|viewer 观察员|十页与审计记录只读|
 
 演示密码均为 `Dye2026!`。JWT 有效期 8 小时；所有变更通过后端鉴权。数据库密码与 JWT 默认密钥为本地演示配置。
 
@@ -49,7 +49,7 @@ Python 3.12 / FastAPI / SQLAlchemy / PostgreSQL16 / Redis7 / scikit-learn1.6；�
 
 `backend/src/models.py` 定义领域模型；`schemas.py` 校验输入；`recipe_service.py` 承担领域规则和审计；`app.py` 路由及两道中间件；`atlas.py` 纯 Python ML；`worker.py` 消费队列、记录心跳；`backend/scripts/seed_demo.py` 幂等数据。首次启动 SQLAlchemy metadata 建表，本小型项目不含后续在线迁移工具。
 
-前端 `src/api.js` API、`store.js` 状态、`utils.js` 格式与反馈、`components/common.js` 标题/状态/光谱/证据表、`pages/` 九个业务页面。角色与试验状态枚举分别位于 `backend/src/constants.py` 与 `frontend/src/constants.js`。
+前端 `src/api.js` API、`store.js` 状态、`utils.js` 格式与反馈、`components/common.js` 标题/状态/光谱/证据表、`pages/` 十个业务页面。角色与试验状态枚举分别位于 `backend/src/constants.py` 与 `frontend/src/constants.js`。
 
 本地后端：创建 Python3.12 venv，安装 `backend/requirements.txt`，设置 DATABASE_URL/REDIS_URL 指向映射端口，进入 backend 运行 `uvicorn src.app:app --reload`；worker 同目录运行 `python -m src.worker`（本地 `/artifacts` 路径需有写权限）。本地前端可经现成 Nginx 容器开发，修改后 compose build frontend。
 
@@ -84,7 +84,7 @@ MIT，见 LICENSE。
 - **客户色样签收**：`ColorDispatch`每个已签放缸只能发样一次，保存运单、客户、实测Lab、原目标、配方、生产kg和签放人快照。发样→实际收件人签收→接受或色差争议；未签收、跨缸结论和重复结论被拒绝。客户原争议记录冻结，后续补染另单处理。
 - **色差客诉补染**：`ShadeComplaint`仅关联已签收且争议的发样单，申请kg不得超过原缸。主管裁定补染或驳回；补染须新的、未用于其他生产缸的approved trial，且新目标色与原客户目标ΔE≤3，系统按申请kg创建唯一关联新缸。新缸正常称料、实测、主管签放后，主管才可关闭；原缸、其他缸、未放行新缸或重复关闭都拒绝。
 
-角色：调色师可入库、称料、发样、记录客户签收/反馈、提出客诉和建立已批准补染新缸；主管另外负责隔离/解除染料、补染裁定、生产签放及关闭客诉；观察员九页只读。客户反馈由内部岗位依据实际交接记录，不新增外部客户登录或对外消息。
+角色：调色师可入库、称料、发样、记录客户签收/反馈、提出客诉和建立已批准补染新缸；主管另外负责隔离/解除染料、补染裁定、生产签放及关闭客诉；观察员十页只读。客户反馈由内部岗位依据实际交接记录，不新增外部客户登录或对外消息。
 
 接口：`GET/POST /dye-lots`、`PUT /dye-lots/{id}/state`、`GET/POST /dye-issues`；`GET/POST /color-dispatches`及`POST /{id}/receive`、`POST /{id}/conclusion`；`GET/POST /shade-complaints`及`POST /{id}/decision`、`POST /{id}/remake`、`POST /{id}/close`。主管专属动作由JWT后端依赖保护，非仅前端禁用。
 
@@ -95,3 +95,25 @@ Seed再补5个染料批次：A80kg、B40kg、C20kg可用，C隔离5kg、B已过�
 续篇剧本：为200kg靛蓝缸称A3.6/B0.8/C0.4kg→色差实测合格并签放→禾里服装收样，林工签收后记录标准光源色差争议→申请100kg补染→主管批准→新试验关联新缸，称A1.6/B0.4/C0.2kg→新缸正常实测签放→主管关闭客诉。新库存、客户与补染证据独立归档`test-artifacts/gb-1021/v3/`。
 
 限制：库存仅染料批次扣料，不包含采购、货位、退库与盘点；客户运单和签收为本地人工凭据，未调用物流或客户门户。补染不出款、不改旧发样结论，不含合同索赔金额。Lab、光谱和工艺门限仍为模拟业务，需真实仪器及客户容差规范校准。
+
+
+## V4：样布柜腾退（光谱降维）
+
+样布柜接近满柜后，对**同配方实测染样**做一次光谱降维，找出可以腾退的样布；留柜条件与替代条件同时成立才生成建议，主管整批确认后才真正腾退。染样页（02）与新增的腾退页（10）共用同一套建议表单、依据预览与确认入口。
+
+- **建议依据**：36 波段先作 StandardScaler → 二维 PCA（`svd_solver=full`、`random_state=42`），与图谱页同一实现（`atlas.project`）。PCA 坐标只用于给替代样排序，**不参与留柜判定**。
+- **原光谱差距**：留柜判定用原始反射率的逐波段 RMS（`sqrt(mean((x−y)²))`），超过门限（默认 0.005，建议时可按配方调整）即留柜，不再寻找替代样。
+- **留柜替代**：每块拟腾退样布都必须在**留在柜中**的同配方样布中找到原光谱差距不超门限的替代样。选取用最大不动点：只有仍存在“非候选”邻居的样布才留在候选集内，互为唯一近邻的一对会被一起保留；候选样的替代样永远来自候选集之外，因此处理后一定仍留柜。已腾退样布不在柜中，不能充当替代样。
+- **不腾退的样布**：已被其他腾退批次选作替代样、已被复染试验（目标样或候选样）引用、被生产缸目标色快照引用、或已腾退的样布，一律留柜并给出具体理由。
+- **主管整批确认**：`proposed → confirmed / rejected`。确认时锁定配方行与全部实测染样行（与复染选样同一把锁，先落账者生效），再按**当前**数据整批重核；任意一块不再满足替代或留柜条件，整批退回并把原因写到每个条目与批次上，不会只腾退其中一部分。
+- **复染选样并发**：已腾退样布不能再建立复染试验（409）。若复染选样先落账，确认时的重核会因该样已被引用而整批退回；若确认先落账，选样会因样布已腾退被拒。
+- **中断重试**：确认已提交后重试直接返回 `confirmed`，不重复腾退（`swatch_retirements.swatch_id` 唯一）。原始读数（L*a*b*、36 波段、配方、批号）、门限、PCA 解释方差/重构误差与确认人、确认时间一起写入 `swatch_retirements.evidence`。
+- **回查**：`GET /retirement-history` 返回每块已腾退样布的替代样、距离、门限与证据；染样页“已腾退样布”区可展开查看原始读数与确认凭据，批次退回原因在腾退页逐条展示。
+
+接口：`GET /retirements`、`GET /retirements/preview`、`POST /retirements`、`POST /retirements/{id}/confirm`、`POST /retirements/{id}/reject`、`GET /retirement-history`。生成建议与预览需要登录，确认与退回仅主管（后端 JWT 依赖校验）。同一配方同时只允许一条 `proposed` 建议。
+
+新增代码：`backend/src/retirement_models.py`、`retirement_schemas.py`、`retirement_service.py`、`retirement_routes.py`；前端 `pages/retirements.js`，染样页内嵌同一组件。新表 `retirement_batches`、`retirement_items`、`swatch_retirements` 由 `Base.metadata.create_all` 自动补建，未改动旧表列。`recipe_service.create_trial` 增加配方/染样行锁与已腾退校验。
+
+Seed 新增 6 张 `CAB-021-01…06` 演示染样（DY-021 下两簇近同谱样布，默认门限下产生 2 组“拟腾退 + 留柜替代”配对），重复 seed 只补缺项，既有 68 张染样数不变；腾退动作本身仍由人工确认产生。
+
+限制：门限是演示工艺常量，需按真实仪器噪声与柜位策略校准；腾退只登记业务离柜，不删除染样、光谱或审计记录，也不联动库存与生产；PCA 距离仅作参考排序，色差判定仍以 ΔE76 为准。

@@ -31,13 +31,21 @@ def create_swatch(db,data,user):
     item=Swatch(**data.model_dump());db.add(item);log(db,user,f'登记染样 {data.lot}');db.commit();return item
 
 def create_trial(db,data,user):
-    recipe=require(db,DyeRecipe,data.recipe_id)
+    # Serialise with retirement confirmation and other trials on the same recipe:
+    # the first transaction to land the recipe row lock wins, the other re-reads
+    # current state. Lock order is recipe → swatches (by id) in both code paths.
+    recipe=db.scalar(select(DyeRecipe).where(DyeRecipe.id==data.recipe_id).with_for_update())
+    if not recipe:raise HTTPException(404,'领域记录不存在')
     from .revision_service import revision_edit_guard
     revision_edit_guard(db,recipe.id)
     if recipe.locked:raise HTTPException(409,'该配方已有放行试验，不能再次签批')
     ref=require(db,Swatch,data.reference_swatch_id);candidate=require(db,Swatch,data.candidate_swatch_id)
     if ref.id==candidate.id:raise HTTPException(409,'目标与候选必须是不同染样')
     if ref.recipe_id!=recipe.id or candidate.recipe_id!=recipe.id:raise HTTPException(409,'染样不属于同一配方')
+    db.scalars(select(Swatch).where(Swatch.id.in_([ref.id,candidate.id])).order_by(Swatch.id).with_for_update()).all()
+    from .retirement_service import is_retired
+    for swatch in (ref,candidate):
+        if is_retired(db,swatch.id):raise HTTPException(409,f'染样 {swatch.lot} 已腾退离柜，不能建立复染试验')
     delta=sum((getattr(ref,k)-getattr(candidate,k))**2 for k in ['l','a','b'])**.5
     item=Trial(**data.model_dump(),delta_e=delta,state=TrialState.DRAFT)
     db.add(item);log(db,user,f'建立复染试验 ΔE={delta:.3f}');db.commit();return item

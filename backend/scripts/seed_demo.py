@@ -29,6 +29,15 @@ def seed():
             prod=DyeRecipe(code='DY-PROD',name='量产靛蓝基准',dye_a=1.8,dye_b=.4,dye_c=.2,locked=True);db.add(prod);db.flush()
         for lot,l,a,b in [('PROD-REF',48,-2,-25),('PROD-OK',48.5,-1.8,-24.8)]:
             if not db.scalar(select(Swatch).where(Swatch.lot==lot)):db.add(Swatch(recipe_id=prod.id,lot=lot,spectrum=[.3]*36,l=l,a=a,b=b))
+        # 柜位演示：DY-021 下两簇近乎同谱的实测染样，供腾退建议产生真实的
+        # “拟腾退 + 留柜替代”配对；与 REF-021 / SAMPLE-021 刻意保持距离。
+        cab_base=[round(.27+.09*math.sin(j/5)+.004*math.cos(j/3),5) for j in range(36)]
+        for idx in range(6):
+            lot=f'CAB-021-{idx+1:02}'
+            if db.scalar(select(Swatch).where(Swatch.lot==lot)):continue
+            cluster=idx//3;offset=cluster*.18
+            spectrum=[round(min(.95,max(.03,v+offset+(idx%3)*.0004)),5) for v in cab_base]
+            db.add(Swatch(recipe_id=rr[0].id,lot=lot,spectrum=spectrum,l=47.2+cluster*.6+(idx%3)*.05,a=-2.1+cluster*.2,b=-24.6+cluster*.3))
         db.flush();ref=db.scalar(select(Swatch).where(Swatch.lot=='PROD-REF'));candidate=db.scalar(select(Swatch).where(Swatch.lot=='PROD-OK'))
         trial=db.scalar(select(Trial).where(Trial.recipe_id==prod.id,Trial.state=='approved'))
         if not trial:
